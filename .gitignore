@@ -1,0 +1,5 @@
+.env
+.ipynb_checkpoints
+db
+rag
+FINAL_RAG.ipynb
