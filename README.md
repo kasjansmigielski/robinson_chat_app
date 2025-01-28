@@ -1,4 +1,4 @@
-### The goal of the project was to implement RAG technology on a selected text.
+### The goal of the project was to implement RAG technology on a selected text
 
 For this purpose, the text of Robinson Crusoe was used, and all implementations
 were developed in the form of an application resembling a chatbot that answers
