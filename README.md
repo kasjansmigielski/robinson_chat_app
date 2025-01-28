@@ -3,7 +3,7 @@
 For this purpose, the text of Robinson Crusoe was used, and all implementations
 were developed in the form of an application resembling a chatbot that answers
 questions related to the book. 
-The Streamlit library was used - for creating simple applications, enabling intuitive use of available functionalities even for non-technical users. The
+The Streamlit library was used - for creating simple applications, enabling intuitive use of available functionalities even for non-technical users. The
 Robinson Chatbot application is designed to enable asking questions related to
 reading and generating answers through LLM models - based on the provided
 extended context.
