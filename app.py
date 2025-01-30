@@ -8,8 +8,10 @@ import numpy as np
 import faiss
 import boto3
 import re
+from nltk.tokenize import sent_tokenize # do tokenizacji na słowa
 
-FILE_PATH = 'robinson-crusoe-lema.txt' # Ścieżka do całego tekstu (po lematyzacji!)
+FILE_PATH = 'robinson-crusoe-lema.txt' # TEKST PO LEMATYZACJI
+# FILE_PATH = 'robinson-crusoe.txt' # TESKT BEZ LEMATYZACJI
 
 #################### KOMUNIKACJA Z LLM: OpenAI / AWS - START #####################
 
@@ -62,7 +64,10 @@ PRICING = model_pricings[st.session_state['model']]
 
 #################### USTAWIENIA (FUNKCJE) RAG - START ##########################
 
-# Chunkowanie - na akapity (grupowanie 5 akapitów)
+
+###################### CHUNKOWANIE - START #####################################
+
+# 1. Chunkowanie - na akapity (grupowanie 5 akapitów)
 def split_text_by_paragraphs(full_text, group_size=5):
     # Podziel tekst na akapity
     paragraphs = full_text.split('\n\n')
@@ -78,7 +83,9 @@ def split_text_by_paragraphs(full_text, group_size=5):
 
     return grouped_paragraphs
 
-# Chunkowanie - na rozdziały (SZYBSZA METODA -> tylko 14 chunków)
+######################
+
+# 2. Chunkowanie - na rozdziały (SZYBSZA METODA -> tylko 14 chunków)
 def split_text_by_chapters(full_text):
 
     if 'Rozdział' in full_text:
@@ -91,6 +98,48 @@ def split_text_by_chapters(full_text):
     chapters = ['Rozdział' + chapter for chapter in chapters]
     
     return chapters
+
+######################
+
+# 3. Chunkowanie - na stałą liczbę znaków
+def split_text_by_fixed_length(full_text, max_length=500):
+    return [full_text[i:i + max_length] for i in range(0, len(full_text), max_length)]
+
+######################
+
+# 4. Chunkowanie - z wykorzystaniem window sliding
+def split_text_with_sliding_window(full_text, window_size=300, step=100):
+    words = full_text.split()
+    chunks = []
+    for i in range(0, len(words), step):
+        chunk = words[i:i + window_size]
+        if chunk:
+            chunks.append(' '.join(chunk))
+    return chunks
+
+###################### CHUNKOWANIE - KONIEC ##################################### 
+
+# 5. Chunkowanie dynamiczne - na stałą liczbę zdań
+def dynamic_chunking(text, max_sentences=20):
+    # Tokenizacja na zdania
+    sentences = sent_tokenize(text) # prosta tokenizacja (podział na słowa)
+
+    dynamic_chunks = []
+    current_chunk = []
+
+    for sentence in sentences:
+        current_chunk.append(sentence)
+        if len(current_chunk) >= max_sentences:
+            dynamic_chunks.append(" ".join(current_chunk))
+            current_chunk = []
+
+    # Dodanie ostatniego fragmentu
+    if current_chunk:
+        dynamic_chunks.append(" ".join(current_chunk))
+
+    return dynamic_chunks
+
+######################
 
 # Wczytywanie tekstu (już po lematyzacji)
 def read_text(FILE_PATH):
@@ -475,11 +524,12 @@ user_input = st.chat_input('O co chcesz spytać?')
 # Lista promptów
 prompts = [
    # 'Wybierz prompt',
-    'Opisz, jak Robinson Crusoe zorganizował swoje codzienne życie na wyspie, aby przetrwać?',
-    'W jaki sposób Robinson Crusoe radził sobie z zagrożeniami ze strony dzikich mieszkańców wyspy?',
-    'Jakie były najtrudniejsze momenty samotności, z którymi zmagał się Robinson i jak sobie z nimi radził?',
-    'Jakie przemiany osobowości i poglądów przeszedł Robinson po ostatecznym powrocie z wyspy do Anglii?',
-    'Jakie cechy charakteru pozwoliły Robinsonowi na przetrwanie na wyspie i co czyniło go wyjątkowym w porównaniu z innymi rozbitkami z literatury?',
+    'Podobnie jak Robinson w "Cast Away", który musiał stworzyć codzienną rutynę, aby przeżyć na bezludnej wyspie, opisz, jak Robinson Crusoe zorganizował swoje codzienne życie na wyspie, aby przetrwać.',
+    'Podobnie jak w historii "Piętaszka", gdzie bohater musiał znaleźć sposoby na radzenie sobie z lokalnymi niebezpieczeństwami, opisz, w jaki sposób Robinson Crusoe radził sobie z zagrożeniami ze strony dzikich mieszkańców wyspy.',
+    'Podobnie jak Tom Hanks w "Cast Away", który przeżywał ciężkie chwile osamotnienia, opisz, jakie były najtrudniejsze momenty samotności, z którymi zmagał się Robinson, i jak sobie z nimi radził.',
+    'Podobnie jak bohaterowie odnajdujący nowe wartości po powrocie z dramatycznych przygód, opisz, jakie przemiany osobowości i poglądów przeszedł Robinson po ostatecznym powrocie z wyspy do Anglii?',
+    'Podobnie jak inne postacie literackie, które przetrwały samemu na wyspie dzięki szczególnym cechom charakteru, opisz, jakie cechy charakteru pozwoliły Robinsonowi na przetrwanie i co czyniło go wyjątkowym w porównaniu z innymi rozbitkami z literatury.',
+    'Jakie cechy charakteru pozwoliły Robinsonowi na przetrwanie na wyspie i co czyniło go wyjątkowym w porównaniu z innymi rozbitkami z literatury ? '
 ]
 
 selected_prompt = st.sidebar.selectbox('Wybierz gotowy prompt', prompts)
@@ -497,7 +547,12 @@ else:
 # Implementacja RAG
 full_text = read_text(FILE_PATH)
 
-chunks = split_text_by_chapters(full_text)
+# Wybór metody chunkowania
+# chunks = split_text_by_chapters(full_text)
+# chunks = split_text_by_paragraphs(full_text, 5)
+# chunks = split_text_by_fixed_length(full_text, 500)
+# chunks = split_text_with_sliding_window(full_text, 300, 100)
+chunks = dynamic_chunking(full_text, 20)
 
 embeddings = get_embeddings(chunks)
 
@@ -574,15 +629,6 @@ with st.sidebar:
         st.metric('Koszt rozmowy (PLN): ', f'{total_cost * USD_TO_PLN:.4f}')
 
     st.write('---')
-    # Wyświetlenie nazwy konwersacji
-    st.session_state['name'] = st.text_input(
-        'Nazwa konwersacji',
-        value = st.session_state['name'],
-        key = 'new_conversation_name',
-        on_change = save_current_conversation_name 
-        #on_change - pozwala na przekazanie funkcji jako argumentu
-    )
-
     # Wyświetlenie osobowości OpenAI - pole do modyfikacji
     st.session_state['chatbot_personality'] = st.text_area(
         'Osobowość chatbota',
@@ -591,6 +637,16 @@ with st.sidebar:
         value=st.session_state["chatbot_personality"],
         key = 'new_chatbot_personality',
         on_change = save_current_conversation_personality
+    )
+
+    st.write('---')
+    # Wyświetlenie nazwy konwersacji
+    st.session_state['name'] = st.text_input(
+        'Nazwa konwersacji',
+        value = st.session_state['name'],
+        key = 'new_conversation_name',
+        on_change = save_current_conversation_name 
+        #on_change - pozwala na przekazanie funkcji jako argumentu
     )
 
     # Tworzenie nowych konwersacji
